@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>進化したFPSゲーム v2.1</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        #game-container {
+            width: 100%;
+            max-width: 900px;
+            height: 650px;
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 25px rgba(0, 220, 255, 0.6);
+            border: 2px solid rgba(0, 220, 255, 0.4);
+            cursor: crosshair;
+        }
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #0f0;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: all 0.1s ease-out;
+        }
+        #crosshair.ads {
+            opacity: 0; /* ADS中はデフォルトクロスヘアを非表示 */
+        }
+        /* スナイパースコープ用のオーバーレイ (オプション) */
+        #sniper-scope-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.75); /* 周囲を暗くする */
+            display: none; /* 通常は非表示 */
+            pointer-events: none;
+            /* スコープの十字線 */
+            background-image:
+                linear-gradient(to right, transparent 0%, transparent calc(50% - 1px), #ff0000 calc(50% - 1px), #ff0000 calc(50% + 1px), transparent calc(50% + 1px), transparent 100%),
+                linear-gradient(to bottom, transparent 0%, transparent calc(50% - 1px), #ff0000 calc(50% - 1px), #ff0000 calc(50% + 1px), transparent calc(50% + 1px), transparent 100%);
+            background-size: 100% 100%, 100% 100%;
+            background-repeat: no-repeat, no-repeat;
+            clip-path: ellipse(40% 50% at 50% 50%); /* 楕円形にクリップ */
+        }
+        #sniper-scope-overlay.active {
+            display: block;
+        }
+
+        #ui-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            pointer-events: none;
+        }
+        #ammo-display, #score-display, #weapon-display {
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 16px;
+            color: #0f0;
+            border: 1px solid #0f0;
+            text-shadow: 0 0 3px #0f0;
+        }
+        #weapon-display {
+            position: absolute;
+            bottom: 60px; /* 弾薬表示の上 */
+            left: 20px;
+            color: #00ccff;
+            border-color: #00ccff;
+            text-shadow: 0 0 3px #00ccff;
+        }
+        #controls-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: rgba(0, 0, 0, 0.75);
+            border: 2px solid #0dd;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.5;
+            max-width: 900px;
+        }
+        #controls-info h2 {
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #0dd;
+        }
+        #message-box {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 128, 255, 0.85);
+            color: white;
+            padding: 12px 25px;
+            border-radius: 6px;
+            display: none;
+            z-index: 100;
+            font-size: 18px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0,128,255,0.7);
+        }
+        .button-container {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .game-button {
+            background: linear-gradient(145deg, #0077ff, #0055cc);
+            color: white;
+            border: none;
+            padding: 12px 22px;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+            transition: all 0.2s ease;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        .game-button:hover {
+            background: linear-gradient(145deg, #0088ff, #0066dd);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+        .game-button:active {
+            transform: translateY(0px);
+            box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="crosshair"></div>
+        <div id="sniper-scope-overlay"></div> <div id="message-box">メッセージ</div>
+        <div id="ui-container">
+            <div id="ammo-display">弾薬: 30 / 30</div>
+            <div id="score-display">スコア: 0</div>
+        </div>
+        <div id="weapon-display">アサルトライフル</div>
+    </div>
+
+    <div id="controls-info">
+        <h2>操作方法</h2>
+        <p>W,A,S,D: 移動 | マウス: 周りを見る | 左クリック: 射撃</p>
+        <p>右クリック長押し: 照準 | スペース: ジャンプ | R: リロード | Q: 武器切替</p>
+        <p>ESC: マウスカーソル解放</p>
+    </div>
+    <div class="button-container">
+        <button id="resetButton" class="game-button">リセット</button>
+        <button id="bgmToggleButton" class="game-button">BGM ON/OFF</button>
+    </div>
+
+    <script>
+        // --- グローバル変数 ---
+        let scene, camera, renderer, player;
+        const gameObjects = [];
+        let bullets = [];
+        let enemies = [];
+        let score = 0;
+
+        const playerHeight = 1.8;
+        const playerSpeed = 5.5;
+        const jumpHeight = 8.5;
+        const gravity = -28.0;
+
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let canJump = true;
+        let playerVelocity = new THREE.Vector3();
+
+        const defaultMouseSensitivityX = 0.002;
+        const defaultMouseSensitivityY = 0.002;
+        let currentMouseSensitivityX = defaultMouseSensitivityX;
+        let currentMouseSensitivityY = defaultMouseSensitivityY;
+
+        let isReloading = false;
+        let lastShotTime = 0;
+
+        let bgmPattern, bgmSynth, bgmVolume; // BGM関連を更新
+        let bgmEnabled = true;
+
+        const clock = new THREE.Clock();
+        let ground;
+
+        const defaultFOV = 75;
+        let isADS = false;
+        let targetFOV = defaultFOV; // FOV遷移用
+
+        // --- サウンド定義 ---
+        const sounds = {
+            ar_shoot: () => new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 }, volume: -10 }).toDestination().triggerAttackRelease("16n"),
+            ar_reload: () => {
+                new Tone.MetalSynth({frequency: 150, envelope: {attack: 0.01, decay: 0.1, release: 0.05}, harmonicity: 3.1, modulationIndex: 16, resonance: 1500, octaves: 0.5, volume: -15}).toDestination().triggerAttackRelease("16n", Tone.now());
+                new Tone.MetalSynth({frequency: 250, envelope: {attack: 0.01, decay: 0.05, release: 0.05}, harmonicity: 2.1, modulationIndex: 10, resonance: 1000, octaves: 0.5, volume: -15}).toDestination().triggerAttackRelease("16n", Tone.now() + 0.15);
+            },
+            shotgun_shoot: () => {
+                new Tone.NoiseSynth({ noise: { type: 'brown' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.15 }, volume: -5 }).toDestination().triggerAttackRelease("8n");
+                new Tone.MembraneSynth({ pitchDecay: 0.1, octaves: 2, envelope: { attack: 0.005, decay: 0.25, sustain: 0 }, volume: -3 }).toDestination().triggerAttackRelease("A1", "8n", Tone.now() + 0.01);
+            },
+            shotgun_reload: () => { // ポンプアクション風
+                new Tone.NoiseSynth({noise: {type: "pink"}, envelope: {attack: 0.01, decay: 0.08, release: 0.1}, volume: -18}).toDestination().triggerAttackRelease("8n", Tone.now());
+                new Tone.NoiseSynth({noise: {type: "pink"}, envelope: {attack: 0.01, decay: 0.08, release: 0.1}, volume: -18}).toDestination().triggerAttackRelease("8n", Tone.now() + 0.3);
+            },
+            sniper_shoot: () => {
+                new Tone.MembraneSynth({ pitchDecay: 0.005, octaves: 6, envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.2 }, volume: -2 }).toDestination().triggerAttackRelease("A4", "16n");
+                new Tone.NoiseSynth({ noise: {type: 'pink'}, envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.15}, volume: -10}).toDestination().triggerAttackRelease("16n", Tone.now()+0.01);
+            },
+            sniper_reload: () => { // ボルト操作風
+                 new Tone.MetalSynth({frequency: 300, envelope: {attack: 0.005, decay: 0.1, release: 0.05}, harmonicity: 5.1, modulationIndex: 22, resonance: 2500, octaves: 0.8, volume: -20}).toDestination().triggerAttackRelease("16n", Tone.now());
+                 new Tone.MetalSynth({frequency: 200, envelope: {attack: 0.005, decay: 0.15, release: 0.05}, harmonicity: 5.1, modulationIndex: 22, resonance: 2500, octaves: 0.8, volume: -20}).toDestination().triggerAttackRelease("16n", Tone.now() + 0.4);
+            },
+            weapon_switch: () => new Tone.Synth({oscillator:{type:"triangle"}, envelope:{attack:0.005, decay:0.05, sustain:0.1, release:0.1}, volume: -18}).toDestination().triggerAttackRelease("C5", "16n"),
+            empty_click: () => new Tone.MetalSynth({frequency: 500, envelope: {attack:0.001, decay:0.02, release:0.01}, harmonicity: 1.1, modulationIndex:5, resonance: 3000, octaves: 0.1, volume: -25}).toDestination().triggerAttackRelease("32n"),
+            jump: () => new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 3, envelope: { attack: 0.001, decay: 0.2, sustain: 0 }, volume: -12 }).toDestination().triggerAttackRelease("C3", "8n", Tone.now() + 0.01),
+            enemy_hit: () => new Tone.Synth({ oscillator: {type: "square"}, envelope: {attack: 0.005, decay: 0.1, sustain: 0, release: 0.1}, volume: -15 }).toDestination().triggerAttackRelease("A3", "16n", Tone.now() + 0.01),
+            enemy_death: () => new Tone.NoiseSynth({ noise: { type: "pink" }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.1 }, volume: -10 }).toDestination().triggerAttackRelease("0.3s", Tone.now() + 0.01),
+        };
+
+
+        // --- 武器設定 ---
+        const weapons = [
+            {
+                name: "アサルトライフル", id: "assault_rifle", damage: 25, fireRateDelay: 120, magazineSize: 30, currentAmmoInMagazine: 30, reloadTime: 2000, bulletSpeed: 150, bulletSpread: 1, pelletsPerShot: 1, canADS: true, adsFOV: 50, adsSensitivityModifier: 0.7, soundShoot: sounds.ar_shoot, soundReload: sounds.ar_reload
+            },
+            {
+                name: "ショットガン", id: "shotgun", damage: 15, fireRateDelay: 1000, magazineSize: 8, currentAmmoInMagazine: 8, reloadTime: 3000, bulletSpeed: 100, bulletSpread: 15, pelletsPerShot: 8, canADS: false, adsFOV: defaultFOV, adsSensitivityModifier: 1.0, soundShoot: sounds.shotgun_shoot, soundReload: sounds.shotgun_reload
+            },
+            {
+                name: "スナイパーライフル", id: "sniper_rifle", damage: 150, fireRateDelay: 1500, magazineSize: 5, currentAmmoInMagazine: 5, reloadTime: 3500, bulletSpeed: 300, bulletSpread: 0, pelletsPerShot: 1, canADS: true, adsFOV: 20, adsSensitivityModifier: 0.4, soundShoot: sounds.sniper_shoot, soundReload: sounds.sniper_reload
+            }
+        ];
+        let currentWeaponIndex = 0;
+
+
+        // --- 初期化処理 ---
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1d232f);
+            scene.fog = new THREE.Fog(0x1d232f, 70, 220); // 霧の範囲調整
+
+            camera = new THREE.PerspectiveCamera(defaultFOV, getGameContainerAspectRatio(), 0.1, 250);
+            camera.position.set(0, playerHeight, 5);
+            player = camera;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(document.getElementById('game-container').clientWidth, document.getElementById('game-container').clientHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            setupLights();
+            createGround();
+            createObstacles(20);
+            createEnemies(5);
+
+            initBgm();
+            resetAllWeaponAmmo();
+            updateWeaponDisplay();
+            updateAmmoDisplay();
+            updateScoreDisplay();
+            document.getElementById('bgmToggleButton').textContent = `BGM ${bgmEnabled ? "OFF" : "ON"}`;
+
+            setupEventListeners();
+            animate();
+        }
+
+        function getGameContainerAspectRatio() {
+            const container = document.getElementById('game-container');
+            return container.clientWidth / container.clientHeight;
+        }
+
+        function setupLights() {
+            const ambientLight = new THREE.AmbientLight(0x707080, 1.1); // 環境光少し明るく
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffeedd, 1.4); // 平行光も強化
+            directionalLight.position.set(25, 40, 20); // ライト位置調整
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048; directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5; directionalLight.shadow.camera.far = 150; // 影の描画範囲
+            directionalLight.shadow.camera.left = -70; directionalLight.shadow.camera.right = 70;
+            directionalLight.shadow.camera.top = 70; directionalLight.shadow.camera.bottom = -70;
+            scene.add(directionalLight);
+            const pointLight = new THREE.PointLight(0x00aaff, 0.9, 120, 1.8); // ポイントライト調整
+            pointLight.position.set(-35, 12, -35);
+            scene.add(pointLight);
+        }
+
+        function createGround() {
+            const groundGeometry = new THREE.PlaneGeometry(300, 300);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x3a3a4a });
+            ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+            gameObjects.push(ground);
+        }
+
+        function createObstacles(count) {
+            gameObjects.filter(obj => obj !== ground && !obj.userData?.isEnemyGroup).forEach(obj => { // 敵グループは除外
+                scene.remove(obj);
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                    else obj.material.dispose();
+                }
+            });
+            for (let i = gameObjects.length - 1; i >= 0; i--) {
+                if (gameObjects[i] !== ground && !gameObjects[i].userData?.isEnemyGroup) {
+                    gameObjects.splice(i, 1);
+                }
+            }
+            for (let i = 0; i < count; i++) {
+                const sizeX = Math.random() * 5 + 2; const sizeY = Math.random() * 10 + 3; const sizeZ = Math.random() * 5 + 2;
+                const obstacleGeo = new THREE.BoxGeometry(sizeX, sizeY, sizeZ);
+                const obstacleMaterial = new THREE.MeshLambertMaterial({ color: Math.random() * 0x777777 + 0x333333 });
+                const obstacle = new THREE.Mesh(obstacleGeo, obstacleMaterial);
+                obstacle.position.set((Math.random() - 0.5) * 180, sizeY / 2, (Math.random() - 0.5) * 180);
+                obstacle.castShadow = true; obstacle.receiveShadow = true;
+                scene.add(obstacle); gameObjects.push(obstacle);
+            }
+        }
+
+        function createEnemies(count) {
+            enemies.forEach(enemy => {
+                scene.remove(enemy.group);
+                enemy.group.traverse(child => {
+                    if (child.isMesh) {
+                        child.geometry.dispose();
+                        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                        else child.material.dispose();
+                    }
+                });
+            });
+            enemies = [];
+            const headRadius = 0.4; const bodyHeight = 1.0; const bodyRadius = 0.6;
+            const enemyMaterial = new THREE.MeshLambertMaterial({ color: 0xff3040 });
+            const headMaterial = new THREE.MeshLambertMaterial({ color: 0xff5060 });
+            for (let i = 0; i < count; i++) {
+                const enemyGroup = new THREE.Group();
+                enemyGroup.userData.isEnemyGroup = true; // 障害物削除時に間違って消さないように
+                const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius, bodyRadius, bodyHeight, 16), enemyMaterial);
+                bodyMesh.castShadow = true; bodyMesh.receiveShadow = true; bodyMesh.position.y = bodyHeight / 2;
+                enemyGroup.add(bodyMesh);
+                const headMesh = new THREE.Mesh(new THREE.SphereGeometry(headRadius, 16, 16), headMaterial);
+                headMesh.castShadow = true; headMesh.receiveShadow = true; headMesh.position.y = bodyHeight + headRadius * 0.8;
+                enemyGroup.add(headMesh);
+                let validPosition = false; let x, z;
+                const spawnRange = 120; const minPlayerDist = 20; const minEnemyDist = bodyRadius * 6;
+                let attempts = 0;
+                while (!validPosition && attempts < 50) {
+                    x = (Math.random() - 0.5) * spawnRange; z = (Math.random() - 0.5) * spawnRange;
+                    enemyGroup.position.set(x, 0, z);
+                    if (player && enemyGroup.position.distanceTo(player.position) < minPlayerDist) { attempts++; continue; }
+                    let tooCloseToAnotherEnemy = false;
+                    for (const existingEnemy of enemies) {
+                        if (enemyGroup.position.distanceTo(existingEnemy.group.position) < minEnemyDist) { tooCloseToAnotherEnemy = true; break; }
+                    }
+                    if (tooCloseToAnotherEnemy) { attempts++; continue; }
+                    validPosition = true;
+                }
+                if (!validPosition) enemyGroup.position.set((Math.random() - 0.5) * spawnRange, 0, (Math.random() - 0.5) * spawnRange);
+                enemyGroup.userData.health = 100; enemyGroup.userData.isEnemy = true; enemyGroup.userData.id = `enemy_${i}`;
+                scene.add(enemyGroup); enemies.push({ group: enemyGroup, health: 100 });
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            // FOVの滑らかな遷移
+            if (Math.abs(camera.fov - targetFOV) > 0.1) {
+                camera.fov = THREE.MathUtils.lerp(camera.fov, targetFOV, delta * 10); // 遷移速度調整
+                camera.updateProjectionMatrix();
+            }
+
+            updatePlayer(delta);
+            updateBullets(delta);
+            updateEnemies(delta);
+            renderer.render(scene, camera);
+        }
+
+        function updatePlayer(delta) {
+            const prevPosition = player.position.clone();
+            const localVelocity = new THREE.Vector3();
+            if (moveForward) localVelocity.z -= 1; if (moveBackward) localVelocity.z += 1;
+            if (moveLeft) localVelocity.x -= 1; if (moveRight) localVelocity.x += 1;
+            const worldVelocity = localVelocity.applyEuler(player.rotation).normalize().multiplyScalar(playerSpeed * delta);
+            player.position.x += worldVelocity.x; if (checkXZCollision()) player.position.x = prevPosition.x;
+            player.position.z += worldVelocity.z; if (checkXZCollision()) player.position.z = prevPosition.z;
+            playerVelocity.y += gravity * delta; player.position.y += playerVelocity.y * delta;
+            let onGround = false; const playerFeetY = player.position.y - playerHeight; const playerHeadY = player.position.y;
+            const playerColliderVertical = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(player.position.x, player.position.y - playerHeight / 2, player.position.z), new THREE.Vector3(0.7, playerHeight, 0.7));
+            for (const obj of gameObjects) {
+                if (obj === ground) continue;
+                const obstacleCollider = new THREE.Box3().setFromObject(obj);
+                if (playerColliderVertical.intersectsBox(obstacleCollider)) {
+                    if (playerVelocity.y <= 0 && (prevPosition.y - playerHeight) >= obstacleCollider.max.y - 0.05 && playerFeetY < obstacleCollider.max.y) {
+                        player.position.y = obstacleCollider.max.y + playerHeight; playerVelocity.y = 0; canJump = true; onGround = true; break;
+                    }
+                    if (playerVelocity.y > 0 && prevPosition.y <= obstacleCollider.min.y + 0.05 && playerHeadY > obstacleCollider.min.y) {
+                         player.position.y = obstacleCollider.min.y; playerVelocity.y = 0; break;
+                    }
+                }
+            }
+            if (!onGround && player.position.y < playerHeight) { player.position.y = playerHeight; playerVelocity.y = 0; canJump = true; }
+        }
+
+        function checkXZCollision() {
+            const playerColliderXZ = new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(player.position.x, player.position.y - playerHeight / 2, player.position.z), new THREE.Vector3(0.7, playerHeight - 0.2, 0.7));
+            for (const obj of gameObjects) {
+                if (obj === ground) continue;
+                const obstacleCollider = new THREE.Box3().setFromObject(obj);
+                if (playerColliderXZ.intersectsBox(obstacleCollider)) {
+                    const verticalOverlap = Math.max(0, Math.min(player.position.y, obstacleCollider.max.y) - Math.max(player.position.y - playerHeight, obstacleCollider.min.y));
+                    if (verticalOverlap > 0.1) return true;
+                }
+            }
+            return false;
+        }
+
+        function updateBullets(delta) {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.mesh.position.addScaledVector(bullet.velocity, bullet.speed * delta);
+                bullet.lifetime -= delta;
+                if (bullet.lifetime <= 0) {
+                    scene.remove(bullet.mesh); bullet.mesh.geometry.dispose(); bullet.mesh.material.dispose();
+                    bullets.splice(i, 1); continue;
+                }
+                const bulletCollider = new THREE.Box3().setFromObject(bullet.mesh);
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const enemy = enemies[j];
+                    if (!enemy.group.parent) continue;
+                    const enemyCollider = new THREE.Box3().setFromObject(enemy.group);
+                    if (bulletCollider.intersectsBox(enemyCollider)) {
+                        scene.remove(bullet.mesh); bullet.mesh.geometry.dispose(); bullet.mesh.material.dispose();
+                        bullets.splice(i, 1); handleEnemyHit(enemy, j, bullet.damage); break;
+                    }
+                }
+                if (!bullet.mesh.parent) continue;
+                for (const obstacle of gameObjects) {
+                    if (obstacle === ground) continue;
+                    const obstacleCollider = new THREE.Box3().setFromObject(obstacle);
+                    if (bulletCollider.intersectsBox(obstacleCollider)) {
+                        scene.remove(bullet.mesh); bullet.mesh.geometry.dispose(); bullet.mesh.material.dispose();
+                        bullets.splice(i, 1); break;
+                    }
+                }
+            }
+        }
+
+        function updateEnemies(delta) {
+            enemies.forEach(enemy => {
+                if (enemy.group && enemy.group.parent && player) {
+                    const enemyPos = enemy.group.position; const playerPos = player.position;
+                    enemy.group.lookAt(playerPos.x, enemyPos.y, playerPos.z);
+                }
+            });
+        }
+
+        function handleEnemyHit(enemy, enemyIndex, damage) {
+            enemy.health -= damage;
+            sounds.enemy_hit();
+            const originalMaterials = new Map();
+            enemy.group.traverse(child => { if (child.isMesh) { originalMaterials.set(child, child.material); child.material = new THREE.MeshBasicMaterial({ color: 0xffffff }); } });
+            setTimeout(() => { enemy.group.traverse(child => { if (child.isMesh && originalMaterials.has(child)) { child.material.dispose(); child.material = originalMaterials.get(child); } }); }, 100);
+
+            if (enemy.health <= 0) {
+                scene.remove(enemy.group);
+                enemy.group.traverse(child => { if (child.isMesh) { child.geometry.dispose(); if (Array.isArray(child.material)) child.material.forEach(m => m.dispose()); else child.material.dispose(); } });
+                enemies.splice(enemyIndex, 1);
+                score += 100; updateScoreDisplay();
+                showMessage(`敵を倒した! スコア: ${score}`);
+                sounds.enemy_death();
+                if (enemies.length === 0) {
+                    showMessage("全滅させた！次のウェーブ...");
+                    setTimeout(() => createEnemies(5 + Math.floor(score / 500)), 2000);
+                }
+            }
+        }
+
+        function shoot() {
+            const weapon = weapons[currentWeaponIndex];
+            const now = performance.now();
+            if (isReloading) { showMessage("リロード中..."); return; }
+            if (weapon.currentAmmoInMagazine <= 0) { showMessage("弾切れ! Rでリロード"); sounds.empty_click(); return; }
+            if (now - lastShotTime < weapon.fireRateDelay) return;
+
+            lastShotTime = now;
+            weapon.currentAmmoInMagazine--;
+            updateAmmoDisplay();
+            weapon.soundShoot();
+
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+
+            for (let i = 0; i < weapon.pelletsPerShot; i++) {
+                const bulletDirection = cameraDirection.clone();
+                if (weapon.bulletSpread > 0) {
+                    const spreadRad = THREE.MathUtils.degToRad(weapon.bulletSpread);
+                    // XとY軸周りにランダムな回転を適用して拡散を表現
+                    const randomEuler = new THREE.Euler(
+                        (Math.random() - 0.5) * spreadRad,
+                        (Math.random() - 0.5) * spreadRad,
+                        0,
+                        'YXZ' // ヨー、ピッチ、ロールの順で適用
+                    );
+                    bulletDirection.applyEuler(randomEuler);
+                }
+                const bulletGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+                const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const bulletMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+                bulletMesh.position.copy(camera.position).addScaledVector(cameraDirection, 0.8); // 銃口から少し前に出す距離調整
+
+                bullets.push({ mesh: bulletMesh, velocity: bulletDirection, speed: weapon.bulletSpeed, lifetime: 3, damage: weapon.damage });
+                scene.add(bulletMesh);
+            }
+            const muzzleFlash = new THREE.PointLight(0xffcc00, 2, 5, 2);
+            muzzleFlash.position.copy(camera.position).addScaledVector(cameraDirection, 0.5);
+            scene.add(muzzleFlash); setTimeout(() => scene.remove(muzzleFlash), 60);
+        }
+
+        function reload() {
+            const weapon = weapons[currentWeaponIndex];
+            if (isReloading || weapon.currentAmmoInMagazine === weapon.magazineSize) {
+                if (weapon.currentAmmoInMagazine === weapon.magazineSize) showMessage("マガジン満タン"); return;
+            }
+            isReloading = true; showMessage("リロード中...");
+            weapon.soundReload();
+            // ADS中なら解除
+            if (isADS) toggleADS(false);
+
+            setTimeout(() => {
+                weapon.currentAmmoInMagazine = weapon.magazineSize;
+                isReloading = false; updateAmmoDisplay(); showMessage("リロード完了！");
+            }, weapon.reloadTime);
+        }
+
+        function switchWeapon() {
+            if (isReloading) { showMessage("リロード中に武器は変えられません。"); return; }
+            // ADS中なら解除してから武器変更
+            if (isADS) toggleADS(false);
+
+            currentWeaponIndex = (currentWeaponIndex + 1) % weapons.length;
+            lastShotTime = 0;
+            sounds.weapon_switch();
+            updateWeaponDisplay();
+            updateAmmoDisplay();
+        }
+
+        function toggleADS(forceState) {
+            const weapon = weapons[currentWeaponIndex];
+            const crosshairEl = document.getElementById('crosshair');
+            const sniperScopeOverlayEl = document.getElementById('sniper-scope-overlay');
+
+            const shouldBeADS = typeof forceState === 'boolean' ? forceState : !isADS;
+
+            if (shouldBeADS && weapon.canADS && !isReloading) {
+                isADS = true;
+                targetFOV = weapon.adsFOV;
+                currentMouseSensitivityX = defaultMouseSensitivityX * weapon.adsSensitivityModifier;
+                currentMouseSensitivityY = defaultMouseSensitivityY * weapon.adsSensitivityModifier;
+                crosshairEl.classList.add('ads');
+                if (weapon.id === "sniper_rifle") {
+                    sniperScopeOverlayEl.classList.add('active');
+                }
+            } else {
+                isADS = false;
+                targetFOV = defaultFOV;
+                currentMouseSensitivityX = defaultMouseSensitivityX;
+                currentMouseSensitivityY = defaultMouseSensitivityY;
+                crosshairEl.classList.remove('ads');
+                sniperScopeOverlayEl.classList.remove('active');
+            }
+        }
+
+
+        function updateAmmoDisplay() {
+            const weapon = weapons[currentWeaponIndex];
+            document.getElementById('ammo-display').textContent = `弾薬: ${weapon.currentAmmoInMagazine} / ${weapon.magazineSize}`;
+        }
+        function updateScoreDisplay() { document.getElementById('score-display').textContent = `スコア: ${score}`; }
+        function updateWeaponDisplay() { document.getElementById('weapon-display').textContent = weapons[currentWeaponIndex].name; }
+        function showMessage(msg, duration = 2000) {
+            const messageBox = document.getElementById('message-box');
+            messageBox.textContent = msg; messageBox.style.display = 'block';
+            setTimeout(() => { messageBox.style.display = 'none'; }, duration);
+        }
+
+        function initBgm() {
+            // BGM全体の音量を調整 (以前は -20dB)
+            bgmVolume = new Tone.Volume(-12).toDestination(); // -12dB に変更して音量を上げる
+
+            // メロディ用シンセの音量を調整 (以前は -8dB)
+            bgmSynth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "fatsawtooth", count: 2, spread: 30 },
+                envelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.8 },
+                volume: -4 // -4dB に変更
+            }).connect(bgmVolume);
+
+            // ベース用シンセの音量を調整 (以前は -4dB)
+            const bassSynth = new Tone.MonoSynth({
+                oscillator: { type: "fmsquare", modulationType: "sawtooth", modulationIndex: 0.5 },
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.2 },
+                filterEnvelope: { attack: 0.01, decay: 0.05, sustain: 0.2, baseFrequency: 80, octaves: 2.5 },
+                volume: 0 // 0dB に変更
+            }).connect(bgmVolume);
+
+            // ドラムキックの音量を調整 (以前は -5dB)
+            const drumKick = () => new Tone.MembraneSynth({pitchDecay: 0.02, octaves: 6, envelope: {attack: 0.001, decay: 0.15, sustain:0}, volume: -2}).connect(bgmVolume).triggerAttackRelease("C1", "8n", Tone.now()); // -2dB に変更
+            // ドラムスネアの音量を調整 (以前は -12dB)
+            const drumSnare = () => new Tone.NoiseSynth({noise: {type: "pink"}, envelope: {attack:0.001, decay:0.08, sustain:0}, volume: -8}).connect(bgmVolume).triggerAttackRelease("8n", Tone.now()); // -8dB に変更
+
+            const melodyNotes = ["G4", "A#4", "C5", "D#5", "G5", "D#5", "C5", "A#4"];
+            const bassNotes = ["G2", "G2", "C3", "C3", "D#2", "D#2", "A#2", "A#2"];
+            let step = 0;
+
+            bgmPattern = new Tone.Sequence((time, note) => {
+                if (step % 2 === 0) bgmSynth.triggerAttackRelease(melodyNotes[step % melodyNotes.length], "8n", time);
+                if (step % 4 === 0) bassSynth.triggerAttackRelease(bassNotes[step % bassNotes.length], "4n", time);
+
+                if (step % 4 === 0) drumKick();
+                if (step % 4 === 2) drumSnare();
+
+                step = (step + 1) % 16; // 16ステップのシーケンス
+            }, [null], "16n"); // 16分音符ごとにコールバック
+
+            if (bgmEnabled) {
+                if (Tone.Transport.state !== "started") Tone.Transport.start();
+                bgmPattern.start(0);
+            }
+        }
+        function toggleBgm() {
+            bgmEnabled = !bgmEnabled;
+            if (bgmEnabled) {
+                if (Tone.context.state !== 'running') Tone.start();
+                if (Tone.Transport.state !== "started") Tone.Transport.start();
+                if (!bgmPattern.started) bgmPattern.start(0);
+                showMessage("BGM ON");
+            } else {
+                bgmPattern.stop(); showMessage("BGM OFF");
+            }
+            document.getElementById('bgmToggleButton').textContent = `BGM ${bgmEnabled ? "OFF" : "ON"}`;
+        }
+
+        function resetAllWeaponAmmo() {
+            weapons.forEach(w => { w.currentAmmoInMagazine = w.magazineSize; });
+        }
+
+        function resetGame() {
+            player.position.set(0, playerHeight, 5); playerVelocity.set(0, 0, 0); player.rotation.set(0,0,0);
+            resetAllWeaponAmmo();
+            currentWeaponIndex = 0;
+            isReloading = false; isADS = false; targetFOV = defaultFOV; camera.fov = defaultFOV; camera.updateProjectionMatrix();
+            toggleADS(false); // ADS状態を確実にリセット
+            updateWeaponDisplay(); updateAmmoDisplay();
+            score = 0; updateScoreDisplay();
+            bullets.forEach(bullet => { scene.remove(bullet.mesh); bullet.mesh.geometry.dispose(); bullet.mesh.material.dispose(); });
+            bullets = [];
+            createEnemies(5); showMessage("ゲームリセット！", 2000);
+        }
+
+        function setupEventListeners() {
+            const gameContainer = document.getElementById('game-container');
+            gameContainer.addEventListener('click', async () => {
+                if (document.pointerLockElement !== gameContainer) {
+                    try {
+                        await gameContainer.requestPointerLock({ unadjustedMovement: true });
+                        if (Tone.context.state !== 'running') await Tone.start();
+                        showMessage("操作開始 (ESCで解除)", 1500);
+                    } catch (err) { showMessage("ポインターロック失敗", 2500); }
+                } else {
+                    if (Tone.context.state !== 'running') await Tone.start();
+                    shoot();
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === gameContainer) {
+                    document.addEventListener('mousemove', onMouseMove, false);
+                    document.addEventListener('mousedown', onMouseDown, false);
+                    document.addEventListener('mouseup', onMouseUp, false);
+                } else {
+                    document.removeEventListener('mousemove', onMouseMove, false);
+                    document.removeEventListener('mousedown', onMouseDown, false);
+                    document.removeEventListener('mouseup', onMouseUp, false);
+                    moveForward = false; moveBackward = false; moveLeft = false; moveRight = false;
+                    if(isADS) toggleADS(false); // ポインターロック解除時にADSも解除
+                }
+            }, false);
+
+            document.addEventListener('keydown', async (event) => {
+                if (document.pointerLockElement !== gameContainer && event.key !== "Escape") return;
+                if (Tone.context.state !== 'running') await Tone.start();
+                switch (event.code) {
+                    case 'KeyW': case 'ArrowUp': moveForward = true; break;
+                    case 'KeyS': case 'ArrowDown': moveBackward = true; break;
+                    case 'KeyA': case 'ArrowLeft': moveLeft = true; break;
+                    case 'KeyD': case 'ArrowRight': moveRight = true; break;
+                    case 'Space': if (canJump) { playerVelocity.y = jumpHeight; canJump = false; sounds.jump(); } break;
+                    case 'KeyR': reload(); break;
+                    case 'KeyQ': switchWeapon(); break;
+                }
+            });
+            document.addEventListener('keyup', (event) => {
+                if (document.pointerLockElement !== gameContainer && event.key !== "Escape") return;
+                switch (event.code) {
+                    case 'KeyW': case 'ArrowUp': moveForward = false; break;
+                    case 'KeyS': case 'ArrowDown': moveBackward = false; break;
+                    case 'KeyA': case 'ArrowLeft': moveLeft = false; break;
+                    case 'KeyD': case 'ArrowRight': moveRight = false; break;
+                }
+            });
+
+            function onMouseMove(event) {
+                if (document.pointerLockElement !== gameContainer) return;
+                const movementX = event.movementX || 0; const movementY = event.movementY || 0;
+                player.rotation.y -= movementX * currentMouseSensitivityX;
+                player.rotation.x -= movementY * currentMouseSensitivityY;
+                player.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.rotation.x));
+            }
+
+            function onMouseDown(event) {
+                if (document.pointerLockElement !== gameContainer) return;
+                if (event.button === 0) { /* shoot(); // 左クリックはgameContainerのclickイベントで処理 */ }
+                else if (event.button === 2) { toggleADS(true); } // 右クリックでADS開始
+            }
+            function onMouseUp(event) {
+                if (document.pointerLockElement !== gameContainer) return;
+                if (event.button === 2) { toggleADS(false); } // 右クリック離してADS終了
+            }
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.getElementById('resetButton').addEventListener('click', resetGame);
+            document.getElementById('bgmToggleButton').addEventListener('click', toggleBgm);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('game-container');
+            if (camera && renderer && container) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        }
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+        else init();
+    </script>
+</body>
+</html>
